@@ -1,0 +1,791 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GuardBench // Threat Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#04080a;--ink2:#081215;--ink3:#0c1b1f;
+  --teal:#2dd4bf;--teal-d:#0d9488;--emerald:#34d399;--ice:#cdeee7;--cyan:#5eead4;
+  --text:#e9f5f2;--muted:#88a39d;--faint:#536a66;
+  --red:#ff6f6f;--red-d:#a83a3a;--amber:#f1c873;--violet:#8ea0ff;
+  --line:rgba(45,212,191,.15);--line-s:rgba(45,212,191,.3);
+  --glass:rgba(12,27,31,.62);--glass2:rgba(16,34,38,.78);
+  --disp:'Sora',sans-serif;--body:'Manrope',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--ink);color:var(--text);font-family:var(--body);-webkit-font-smoothing:antialiased;overflow:hidden;
+  cursor:crosshair;}
+a,button,.dot{cursor:pointer}
+
+/* ---- atmosphere ---- */
+.bg-field{position:fixed;inset:0;z-index:0;pointer-events:none;background:
+  radial-gradient(1000px 760px at 80% 8%,rgba(45,212,191,.10),transparent 60%),
+  radial-gradient(820px 820px at 8% 92%,rgba(52,211,153,.07),transparent 60%),
+  radial-gradient(1300px 640px at 50% 128%,rgba(13,148,136,.10),transparent 60%),var(--ink);}
+.bg-grid{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+  background-image:linear-gradient(rgba(45,212,191,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(45,212,191,.045) 1px,transparent 1px);
+  background-size:56px 56px;mask:radial-gradient(circle at 50% 42%,#000,transparent 78%);}
+.scanline{position:fixed;left:0;right:0;height:140px;z-index:48;pointer-events:none;mix-blend-mode:screen;opacity:.5;
+  background:linear-gradient(180deg,transparent,rgba(94,234,212,.06) 45%,rgba(94,234,212,.12) 50%,rgba(94,234,212,.06) 55%,transparent);
+  animation:scan 9s linear infinite;}
+@keyframes scan{0%{transform:translateY(-160px)}100%{transform:translateY(100vh)}}
+.grain{position:fixed;inset:0;z-index:49;pointer-events:none;opacity:.045;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+/* ---- HUD chrome ---- */
+.hud{position:fixed;left:30px;top:24px;z-index:42;font-family:var(--mono);font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:.6em}
+.hud b{color:var(--teal);font-weight:600}
+.hud .mk{width:9px;height:9px;border-radius:2px;background:linear-gradient(135deg,var(--teal),var(--emerald));box-shadow:0 0 12px var(--teal);animation:blip 2.2s ease-in-out infinite}
+@keyframes blip{0%,100%{opacity:1}50%{opacity:.4}}
+.ticker{position:fixed;left:30px;bottom:22px;z-index:42;font-family:var(--mono);font-size:.66rem;letter-spacing:.08em;color:var(--faint);max-width:42vw}
+.ticker .ln{color:var(--muted)} .ticker .v{color:var(--teal)} .ticker .a{color:var(--red)}
+.counter{position:fixed;right:30px;bottom:22px;z-index:42;font-family:var(--mono);font-size:.72rem;letter-spacing:.2em;color:var(--muted)}
+.counter b{color:var(--text)}
+.progress{position:fixed;left:0;top:0;height:2px;z-index:46;background:linear-gradient(90deg,var(--teal),var(--emerald));width:0;transition:width .35s;box-shadow:0 0 12px var(--teal)}
+.rail{position:fixed;right:24px;top:50%;transform:translateY(-50%);z-index:42;display:flex;flex-direction:column;gap:10px}
+.dot{width:7px;height:7px;border-radius:50%;border:1px solid var(--line-s);background:transparent;padding:0;transition:all .3s}
+.dot.on{background:var(--teal);box-shadow:0 0 12px var(--teal);transform:scale(1.4);border-color:var(--teal)}
+.hint{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:42;font-family:var(--mono);font-size:.64rem;letter-spacing:.2em;color:var(--faint);text-transform:uppercase;animation:bob 2.4s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateX(-50%) translateY(0);opacity:.5}50%{transform:translateX(-50%) translateY(5px);opacity:.9}}
+
+/* viewfinder brackets + bignum injected per slide */
+.brk{position:absolute;width:26px;height:26px;border:2px solid var(--line-s);z-index:3;pointer-events:none;opacity:.7}
+.brk.tl{top:26px;left:26px;border-right:0;border-bottom:0}
+.brk.tr{top:26px;right:26px;border-left:0;border-bottom:0}
+.brk.bl{bottom:26px;left:26px;border-right:0;border-top:0}
+.brk.br{bottom:26px;right:26px;border-left:0;border-top:0}
+.bignum{position:absolute;right:4.5vw;top:6vh;font-family:var(--disp);font-weight:800;font-size:18vh;line-height:1;color:rgba(45,212,191,.045);z-index:0;pointer-events:none;letter-spacing:-.04em}
+.slabel{position:absolute;right:30px;top:26px;z-index:3;font-family:var(--mono);font-size:.62rem;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
+
+/* ---- deck/slides ---- */
+.deck{position:relative;z-index:1;height:100vh;overflow-y:scroll;scroll-snap-type:y mandatory;scroll-behavior:smooth;scrollbar-width:none}
+.deck::-webkit-scrollbar{display:none}
+.slide{height:100vh;width:100%;scroll-snap-align:start;scroll-snap-stop:always;display:flex;flex-direction:column;justify-content:center;padding:7vh 7vw;position:relative;overflow:hidden}
+@media(max-width:900px){.slide{padding:6vh 6vw}}
+
+/* reveal (replays on re-enter) */
+.r{opacity:0;transform:translateY(26px);filter:blur(3px);transition:opacity .75s cubic-bezier(.16,.8,.24,1),transform .75s cubic-bezier(.16,.8,.24,1),filter .75s}
+.slide.active .r{opacity:1;transform:none;filter:none;transition-delay:var(--d,0s)}
+.rx{opacity:0;transform:translateX(-32px);transition:opacity .75s cubic-bezier(.16,.8,.24,1),transform .75s cubic-bezier(.16,.8,.24,1)}
+.slide.active .rx{opacity:1;transform:none;transition-delay:var(--d,0s)}
+.rs{opacity:0;transform:scale(.9);transition:opacity .65s ease,transform .65s cubic-bezier(.16,.8,.24,1)}
+.slide.active .rs{opacity:1;transform:none;transition-delay:var(--d,0s)}
+
+/* type */
+.kicker{font-family:var(--mono);font-size:.72rem;letter-spacing:.32em;text-transform:uppercase;color:var(--teal);display:inline-flex;align-items:center;gap:.6em;margin-bottom:1rem}
+.kicker::before{content:"";width:24px;height:1px;background:linear-gradient(90deg,var(--teal),transparent)}
+h1.title{font-family:var(--disp);font-weight:800;font-size:clamp(2rem,4vw,3.3rem);line-height:1.04;letter-spacing:-.02em}
+h2{font-family:var(--disp);font-weight:700;font-size:clamp(1.45rem,2.7vw,2.4rem);line-height:1.08;letter-spacing:-.015em;margin-bottom:.4rem}
+.sub{color:var(--muted);font-size:clamp(.92rem,1.2vw,1.12rem);font-weight:500;line-height:1.5;max-width:64ch}
+.lead{font-size:clamp(.98rem,1.25vw,1.2rem);color:var(--ice);line-height:1.5}
+.mono{font-family:var(--mono)} .tl{color:var(--teal)} .em{color:var(--emerald)} .rd{color:var(--red)} .am{color:var(--amber)}
+strong{color:#fff;font-weight:700}
+
+/* cards */
+.card{background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:1.25rem 1.4rem;backdrop-filter:blur(14px);position:relative;overflow:hidden}
+.card.glow{box-shadow:0 0 0 1px var(--line-s),0 30px 70px -32px rgba(45,212,191,.4)}
+.chip{font-family:var(--mono);font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;padding:.32em .7em;border-radius:999px;border:1px solid var(--line-s);color:var(--teal);background:rgba(45,212,191,.06)}
+.pill{display:inline-flex;align-items:center;gap:.4em;font-family:var(--mono);font-size:.68rem;letter-spacing:.05em;padding:.32em .7em;border-radius:999px;border:1px solid var(--line)}
+.ok{color:var(--emerald);border-color:rgba(52,211,153,.4);background:rgba(52,211,153,.07)}
+.no{color:var(--red);border-color:rgba(255,111,111,.4);background:rgba(255,111,111,.07)}
+.num-badge{font-family:var(--disp);font-weight:800;width:2.5rem;height:2.5rem;border-radius:13px;display:grid;place-items:center;font-size:1.15rem;color:var(--ink);background:linear-gradient(135deg,var(--teal),var(--emerald));flex:none;box-shadow:0 10px 26px -8px rgba(45,212,191,.6)}
+.divider{height:1px;background:var(--line);margin:.8rem 0}
+.tag-role{font-family:var(--mono);font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:clamp(.72rem,1vw,.9rem)}
+th{font-family:var(--mono);font-weight:500;text-transform:uppercase;letter-spacing:.1em;font-size:.64rem;color:var(--muted);text-align:left;padding:.65rem .8rem;border-bottom:1px solid var(--line-s)}
+td{padding:.6rem .8rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top;line-height:1.4}
+tr.hl td{background:linear-gradient(90deg,rgba(45,212,191,.13),rgba(52,211,153,.05));color:#fff;font-weight:600}
+tr.hl{box-shadow:inset 0 0 0 1px var(--line-s)}
+.mini{padding:.1em .5em;border-radius:6px;font-family:var(--mono);font-size:.62rem}
+
+/* flowchart / diagram primitives */
+.flow{display:flex;align-items:stretch;gap:.55rem}
+.fnode{flex:1;background:var(--glass);border:1px solid var(--line);border-radius:14px;padding:1rem;position:relative}
+.farrow{display:grid;place-items:center;color:var(--teal);font-size:1.3rem;opacity:.8;flex:none;width:30px}
+.svgwrap{width:100%;display:flex;justify-content:center}
+.stat{font-family:var(--disp);font-weight:800;line-height:1;letter-spacing:-.02em;background:linear-gradient(135deg,var(--teal),var(--emerald));-webkit-background-clip:text;background-clip:text;color:transparent}
+.flash-breach{animation:breach 1.7s ease-in-out infinite}
+@keyframes breach{0%,100%{box-shadow:0 0 0 1px rgba(255,111,111,.4),0 0 30px -8px rgba(255,111,111,.4)}50%{box-shadow:0 0 0 1px rgba(255,111,111,.85),0 0 52px -4px rgba(255,111,111,.7)}}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--red);animation:lp 1.8s infinite}
+@keyframes lp{0%{box-shadow:0 0 0 0 rgba(255,111,111,.5)}70%{box-shadow:0 0 0 9px rgba(255,111,111,0)}100%{box-shadow:0 0 0 0 rgba(255,111,111,0)}}
+#hero3d,#hero3d2{position:absolute;inset:0;z-index:0}
+.hero-wrap{position:relative;z-index:2;pointer-events:none}
+
+/* SVG diagram shared */
+svg .edge{stroke:var(--line-s);stroke-width:1.4;fill:none}
+svg .edge-faint{stroke:rgba(45,212,191,.18);stroke-width:1.2;fill:none}
+svg .node-c{fill:rgba(12,27,31,.9);stroke:var(--teal);stroke-width:1.5}
+svg .lbl{font-family:var(--mono);fill:var(--text);font-size:12px;letter-spacing:.04em}
+svg .lbl-s{font-family:var(--mono);fill:var(--muted);font-size:10px;letter-spacing:.06em}
+svg .ttl{font-family:var(--disp);font-weight:700;fill:#fff;font-size:14px}
+svg .danger{stroke:var(--red)}
+.dash-flow{stroke-dasharray:6 8;animation:dashmove 1s linear infinite}
+@keyframes dashmove{to{stroke-dashoffset:-14}}
+
+/* boot intro */
+#boot{position:fixed;inset:0;z-index:90;background:var(--ink);display:flex;flex-direction:column;justify-content:center;padding:0 8vw;font-family:var(--mono);transition:opacity .6s}
+#boot.gone{opacity:0;pointer-events:none}
+#boot .l{font-size:clamp(.8rem,1.1vw,1rem);color:var(--teal);margin:.18rem 0;opacity:0}
+#boot .l.show{opacity:1}
+#boot .l .g{color:var(--faint)} #boot .l .ok{color:var(--emerald)}
+#boot .cur{display:inline-block;width:9px;height:1.1em;background:var(--teal);vertical-align:-2px;animation:cur .8s steps(1) infinite}
+@keyframes cur{50%{opacity:0}}
+.gauge-num{font-family:var(--disp);font-weight:800;font-size:3.2rem;line-height:1;background:linear-gradient(135deg,var(--teal),var(--emerald));-webkit-background-clip:text;background-clip:text;color:transparent}
+.bar-track{height:14px;border-radius:8px;background:rgba(255,255,255,.06);overflow:hidden;position:relative}
+.bar-fill{height:100%;width:0;border-radius:8px;transition:width 1.2s cubic-bezier(.16,.8,.24,1)}
+</style>
+
+<div class="bg-field"></div><div class="bg-grid"></div><div class="scanline"></div><div class="grain"></div>
+<div class="progress" id="prog"></div>
+<div class="hud"><span class="mk"></span> Guard<b>Bench</b> <span style="color:var(--faint)">// threat-monitor</span></div>
+<div class="ticker" id="ticker"></div>
+<div class="rail" id="rail"></div>
+<div class="counter"><b id="cnum">01</b> / 21</div>
+
+<div id="boot">
+  <div class="l" id="b0"><span class="g">$</span> guardbench --init <span class="g">--rbac=5-agent --channel=peer-dialogue</span></div>
+  <div class="l" id="b1"><span class="g">[ boot ]</span> mounting agents .......... <span class="ok">HR ENG FIN SALES MGMT</span></div>
+  <div class="l" id="b2"><span class="g">[ boot ]</span> arming channel monitor .... <span class="ok">OK</span></div>
+  <div class="l" id="b3"><span class="g">[ boot ]</span> breach-watch ............. <span class="ok">ACTIVE</span> <span class="cur"></span></div>
+</div>
+
+<div class="deck" id="deck">
+<!-- 1 TITLE -->
+<section class="slide" data-label="00 // cold open" id="s1">
+  <div id="hero3d"></div>
+  <div class="hero-wrap">
+    <div class="kicker r" style="--d:.1s">Capstone Proposal · Uniphore Technologies · Advised by Peng Qi</div>
+    <h1 class="title r" style="--d:.2s;font-size:clamp(2.6rem,7vw,6rem)">Guard<span class="tl">Bench</span></h1>
+    <p class="lead r" style="--d:.34s;margin-top:.5rem;max-width:30ch;font-weight:600;font-size:clamp(1.05rem,1.8vw,1.5rem)">Benchmarking access-control evasion &amp; defense in multi-agent AI systems.</p>
+    <p class="sub r" style="--d:.5s;margin-top:1.3rem;max-width:38ch">When AI agents collaborate, how do we stop them from leaking <span class="tl">each other's secrets?</span></p>
+    <div class="r mono" style="--d:.7s;margin-top:2rem;display:flex;align-items:center;gap:1rem;font-size:.72rem;letter-spacing:.14em;color:var(--faint)">
+      <span><span class="tl">AGENT&nbsp;A</span> ⇄ <span class="em">AGENT&nbsp;B</span></span>
+      <span style="width:120px;height:1px;background:linear-gradient(90deg,var(--teal),var(--emerald))"></span>
+      <span>the channel GuardBench guards</span>
+    </div>
+  </div>
+  <div class="hint">scroll ↓ · ↑↓ keys to navigate</div>
+</section>
+
+<!-- 2 MOTIVATION : unguarded channel network -->
+<section class="slide" data-label="01 // motivation" id="s2">
+  <div class="kicker r">Motivation</div>
+  <h2 class="r" style="--d:.05s;max-width:22ch">Agents now talk to each other — and <span class="tl">no one guards that channel.</span></h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:.6rem">Enterprises no longer deploy one AI. They deploy many specialized agents, each wired to different data and systems.</p>
+  <div class="svgwrap r" style="--d:.2s;flex:1;min-height:0">
+    <svg viewBox="0 0 1000 360" style="width:100%;max-height:42vh" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Agent network with an unguarded central channel">
+      <line class="edge-faint" x1="180" y1="80" x2="820" y2="280"/><line class="edge-faint" x1="820" y1="80" x2="180" y2="280"/>
+      <line class="edge-faint" x1="180" y1="80" x2="820" y2="80"/><line class="edge-faint" x1="180" y1="280" x2="820" y2="280"/>
+      <line class="edge-faint" x1="180" y1="80" x2="180" y2="280"/><line class="edge-faint" x1="820" y1="80" x2="820" y2="280"/>
+      <!-- unguarded center -->
+      <rect x="418" y="120" width="164" height="120" rx="14" fill="rgba(255,111,111,.05)" stroke="var(--red)" stroke-width="1.5" class="dash-flow"/>
+      <path d="M500 150 l26 9 v22 c0 18 -12 30 -26 38 c-14 -8 -26 -20 -26 -38 v-22 z" fill="none" stroke="var(--red)" stroke-width="1.5" opacity=".8"/>
+      <line x1="476" y1="150" x2="524" y2="222" stroke="var(--red)" stroke-width="2"/>
+      <text class="lbl-s" x="500" y="262" text-anchor="middle" fill="var(--red)" style="letter-spacing:.18em">UNGUARDED</text>
+      <!-- traffic packets -->
+      <circle r="4" fill="var(--teal)"><animateMotion dur="3.2s" repeatCount="indefinite" path="M180,80 L820,280"/></circle>
+      <circle r="4" fill="var(--emerald)"><animateMotion dur="3.2s" begin="1.6s" repeatCount="indefinite" path="M820,280 L180,80"/></circle>
+      <circle r="4" fill="var(--teal)"><animateMotion dur="3.6s" repeatCount="indefinite" path="M820,80 L180,280"/></circle>
+      <circle r="4" fill="var(--emerald)"><animateMotion dur="3.6s" begin="1.8s" repeatCount="indefinite" path="M180,280 L820,80"/></circle>
+      <circle r="3.4" fill="var(--cyan)"><animateMotion dur="2.6s" repeatCount="indefinite" path="M180,80 L820,80"/></circle>
+      <circle r="3.4" fill="var(--cyan)"><animateMotion dur="2.6s" begin="1.3s" repeatCount="indefinite" path="M820,280 L180,280"/></circle>
+      <!-- nodes -->
+      <g><circle cx="180" cy="80" r="40" class="node-c"/><text class="ttl" x="180" y="78" text-anchor="middle">HR</text><text class="lbl-s" x="180" y="94" text-anchor="middle">payroll · reviews</text></g>
+      <g><circle cx="180" cy="280" r="40" class="node-c"/><text class="ttl" x="180" y="278" text-anchor="middle">ENG</text><text class="lbl-s" x="180" y="294" text-anchor="middle">code · deploys</text></g>
+      <g><circle cx="820" cy="80" r="40" class="node-c"/><text class="ttl" x="820" y="78" text-anchor="middle">SALES</text><text class="lbl-s" x="820" y="94" text-anchor="middle">deals · pricing</text></g>
+      <g><circle cx="820" cy="280" r="40" class="node-c"/><text class="ttl" x="820" y="278" text-anchor="middle">FIN</text><text class="lbl-s" x="820" y="294" text-anchor="middle">budgets · forecasts</text></g>
+    </svg>
+  </div>
+  <div class="card glow r flash-breach" style="--d:.45s;border-color:rgba(255,111,111,.3)">
+    <p class="lead" style="font-size:1.02rem">Each agent should inherit its user's permissions <span class="mono tl">(RBAC)</span> — but <strong>nothing enforces them across agent-to-agent conversation.</strong> <span class="rd">The channel is unguarded.</span></p>
+  </div>
+</section>
+
+<!-- 3 AGGREGATE INFERENCE : live reconstruction -->
+<section class="slide" data-label="02 // breach demo" id="s3">
+  <div class="kicker r">Motivation · A Concrete Scenario</div>
+  <h2 class="r" style="--d:.05s">Aggregate inference: <span class="tl">every message is allowed.</span></h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:1.3rem">An Engineering agent extracts a colleague's exact salary from Finance — without ever asking a question it isn't allowed to ask.</p>
+  <div style="display:grid;grid-template-columns:1fr auto 1fr auto 1.15fr;align-items:stretch;gap:.7rem">
+    <div class="card rs" style="--d:.2s"><div class="mono" style="font-size:.64rem;letter-spacing:.16em;color:var(--faint)">TURN 1 · QUERY</div><p class="lead" style="margin:.5rem 0;font-size:1rem">"What's the team's average salary?"</p><span class="pill ok">✓ allowed</span></div>
+    <div class="farrow rs" style="--d:.32s">+</div>
+    <div class="card rs" style="--d:.42s"><div class="mono" style="font-size:.64rem;letter-spacing:.16em;color:var(--faint)">TURN 2 · QUERY</div><p class="lead" style="margin:.5rem 0;font-size:1rem">"And what's the salary range?"</p><span class="pill ok">✓ allowed</span></div>
+    <div class="farrow rs" style="--d:.54s">→</div>
+    <div class="card rs flash-breach" id="reconCard" style="--d:.64s;border-color:rgba(255,111,111,.4)"><div class="mono" style="font-size:.64rem;letter-spacing:.16em;color:var(--red)">COMBINE · DERIVE</div><p class="lead" style="margin:.5rem 0;font-size:.98rem">Two allowed answers reconstruct one colleague's exact pay:</p><div class="mono" id="reconNum" style="font-size:1.7rem;font-weight:600;color:var(--red);letter-spacing:.04em">$•••,•••</div><span class="pill no" style="margin-top:.5rem">✗ not allowed</span></div>
+  </div>
+  <div class="card r" style="--d:.9s;margin-top:1.3rem;background:rgba(255,111,111,.05);border-color:rgba(255,111,111,.2)">
+    <p class="sub" style="color:var(--ice)"><strong class="rd">Why existing defenses miss it:</strong> every individual message is policy-compliant, so per-message access checks never fire. The breach exists <strong>only across the whole conversation</strong> — exactly what current benchmarks never evaluate.</p>
+  </div>
+</section>
+
+<!-- 4 GAP TABLE -->
+<section class="slide" data-label="03 // prior work" id="s4">
+  <div class="kicker r">The Gap in Existing Benchmarks</div>
+  <h2 class="r" style="--d:.05s">Existing benchmarks guard the <span class="tl">wrong door.</span></h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:1.1rem">All inject malice through tools or external data. None treat one agent persuading another as the attack.</p>
+  <div class="card r" style="--d:.2s;padding:.5rem 1rem">
+    <table>
+      <thead><tr><th>Benchmark</th><th>Attack channel</th><th>Setting</th><th>Multi-turn</th><th>RBAC roles</th><th>Peer-agent</th></tr></thead>
+      <tbody>
+        <tr><td><strong>InjecAgent</strong> <span class="tag-role">2024</span></td><td>Malicious tool output</td><td>Single agent + tools</td><td><span class="mini no">No</span></td><td><span class="mini no">No</span></td><td><span class="mini no">No</span></td></tr>
+        <tr><td><strong>AgentDojo</strong> <span class="tag-role">2024</span></td><td>Untrusted tool data</td><td>Single agent + tools</td><td><span class="mini am" style="border:1px solid rgba(241,200,115,.3)">Partial</span></td><td><span class="mini no">No</span></td><td><span class="mini no">No</span></td></tr>
+        <tr><td><strong>ASB</strong> <span class="tag-role">ICLR 2025</span></td><td>Tool injection + memory poisoning</td><td>Agent + tools + memory</td><td><span class="mini no">No</span></td><td><span class="mini no">No</span></td><td><span class="mini no">No</span></td></tr>
+        <tr class="hl scanrow"><td><strong class="tl">GuardBench</strong> <span class="tag-role">ours</span></td><td>Agent-to-agent dialogue</td><td>Many agents, RBAC roles</td><td><span class="mini ok">Yes</span></td><td><span class="mini ok">Yes</span></td><td><span class="mini ok">Yes</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="sub r" style="--d:.5s;margin-top:1.1rem"><strong class="tl">The gap:</strong> no prior benchmark gives agents different permission levels or models multi-turn social engineering between peer agents. <strong>That space is GuardBench.</strong></p>
+</section>
+
+<!-- 5 RESEARCH QUESTIONS -->
+<section class="slide" data-label="04 // research questions" id="s5">
+  <div class="kicker r">Research Questions</div>
+  <h2 class="r" style="--d:.05s;margin-bottom:1.3rem">What GuardBench is built to answer.</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div class="card rs" style="--d:.15s;display:flex;gap:1rem"><div class="num-badge" style="width:auto;padding:0 .7rem">RQ1</div><div><p class="lead" style="font-size:1rem">Do defenses built for tool-injection generalize to peer-agent dialogue attacks?</p><p class="sub" style="font-size:.84rem;margin-top:.35rem">And which attack types expose the largest gaps?</p></div></div>
+    <div class="card rs" style="--d:.3s;display:flex;gap:1rem"><div class="num-badge" style="width:auto;padding:0 .7rem">RQ2</div><div><p class="lead" style="font-size:1rem">Does knowing the victim's permission policy give a real advantage?</p><p class="sub" style="font-size:.84rem;margin-top:.35rem">Can a closed-box attacker recover it just by probing?</p></div></div>
+    <div class="card rs" style="--d:.45s;display:flex;gap:1rem"><div class="num-badge" style="width:auto;padding:0 .7rem">RQ3</div><div><p class="lead" style="font-size:1rem">Can we detect aggregate inference, where every message is compliant?</p><p class="sub" style="font-size:.84rem;margin-top:.35rem">Without flooding legitimate requests with false alarms.</p></div></div>
+    <div class="card rs glow" style="--d:.6s;display:flex;gap:1rem"><div class="num-badge" style="width:auto;padding:0 .7rem">RQ4</div><div><p class="lead" style="font-size:1rem">Can one unified defense handle every attack type?</p><p class="sub" style="font-size:.84rem;margin-top:.35rem">Or do different attacks need fundamentally different countermeasures?</p></div></div>
+  </div>
+</section>
+
+<!-- 6 THEAGENTCOMPANY + gauge -->
+<section class="slide" data-label="05 // testbed" id="s6">
+  <div class="kicker r">Software Environment</div>
+  <h2 class="r" style="--d:.05s">Building on <span class="tl">TheAgentCompany.</span></h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:1.2rem">A productivity benchmark re-purposed as a security testbed.</p>
+  <div style="display:grid;grid-template-columns:1fr 1.1fr;gap:1.4rem;align-items:center">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:.6rem" class="rs">
+      <svg viewBox="0 0 220 220" style="width:min(34vh,260px)" role="img" aria-label="Task autonomy gauge at 30 percent">
+        <circle cx="110" cy="110" r="80" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="14"/>
+        <circle id="gaugeRing" cx="110" cy="110" r="80" fill="none" stroke="url(#gg)" stroke-width="14" stroke-linecap="round" stroke-dasharray="502.6" stroke-dashoffset="502.6" transform="rotate(-90 110 110)"/>
+        <defs><linearGradient id="gg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs>
+      </svg>
+      <div style="text-align:center;margin-top:-150px;pointer-events:none"><div class="gauge-num" id="g30">0%</div><div class="tag-role" style="margin-top:.3rem">tasks done autonomously</div></div>
+      <div style="height:120px"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.8rem">
+      <div class="card rx" style="--d:.2s"><div class="chip">What it is</div><p class="sub" style="margin-top:.5rem;font-size:.86rem">A simulated software company where agents complete workplace tasks — sprints, code, HR, finance — on GitLab, RocketChat, Plane, OwnCloud.</p></div>
+      <div class="card rx" style="--d:.32s"><div class="chip">Key finding</div><p class="sub" style="margin-top:.5rem;font-size:.86rem">Best model (Gemini 2.5 Pro) completes only <strong class="tl">30%</strong> of tasks autonomously — realistic enterprise workflows are hard.</p></div>
+      <div class="card rx glow" style="--d:.44s;border-color:rgba(255,111,111,.25)"><div class="chip" style="color:var(--red);border-color:rgba(255,111,111,.4)">The gap</div><p class="sub" style="margin-top:.5rem;font-size:.86rem">It measures productivity, not safety. It never asks: <em class="rd">should the agent have done that?</em> <strong>GuardBench fills that gap.</strong></p></div>
+    </div>
+  </div>
+</section>
+<!-- 7 ENTERPRISE ENV + service bus -->
+<section class="slide" data-label="06 // environment" id="s7">
+  <div class="kicker r">Software Environment</div>
+  <h2 class="r" style="--d:.05s">The simulated enterprise environment.</h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:1rem">Each agent has a fixed role, scoped credentials, and access only to the systems its job requires.</p>
+  <div class="r" style="--d:.2s;display:grid;grid-template-columns:repeat(5,1fr);gap:.7rem">
+    <div class="card" style="padding:.9rem"><div class="chip" style="border-color:var(--line-s)">SWE</div><p class="sub" style="font-size:.74rem;margin-top:.5rem">Source code · CI/CD</p><span class="pill ok" style="margin-top:.5rem;font-size:.58rem">standard</span></div>
+    <div class="card" style="padding:.9rem"><div class="chip" style="border-color:var(--line-s)">HR</div><p class="sub" style="font-size:.74rem;margin-top:.5rem">Salaries · records</p><span class="pill no" style="margin-top:.5rem;font-size:.58rem">restricted</span></div>
+    <div class="card" style="padding:.9rem"><div class="chip" style="border-color:var(--line-s)">Finance</div><p class="sub" style="font-size:.74rem;margin-top:.5rem">Payroll · budgets</p><span class="pill no" style="margin-top:.5rem;font-size:.58rem">restricted</span></div>
+    <div class="card" style="padding:.9rem"><div class="chip" style="border-color:var(--line-s)">Sales</div><p class="sub" style="font-size:.74rem;margin-top:.5rem">CRM · deals</p><span class="pill ok" style="margin-top:.5rem;font-size:.58rem">standard</span></div>
+    <div class="card glow" style="padding:.9rem"><div class="chip" style="border-color:var(--line-s)">Mgmt</div><p class="sub" style="font-size:.74rem;margin-top:.5rem">Admin · all svc</p><span class="pill" style="margin-top:.5rem;font-size:.58rem;color:var(--amber);border-color:rgba(241,200,115,.4)">admin</span></div>
+  </div>
+  <div class="svgwrap r" style="--d:.4s;margin-top:1rem">
+    <svg viewBox="0 0 1000 120" style="width:100%" role="img" aria-label="Shared service bus with traffic">
+      <text class="lbl-s" x="20" y="24">SHARED SERVICE BUS</text>
+      <line x1="40" y1="60" x2="960" y2="60" stroke="var(--line-s)" stroke-width="2"/>
+      <g font-family="JetBrains Mono" font-size="10" fill="var(--muted)" text-anchor="middle">
+        <g><circle cx="100" cy="60" r="5" fill="var(--ink)" stroke="var(--teal)" stroke-width="1.5"/><text x="100" y="88">RocketChat</text></g>
+        <g><circle cx="222" cy="60" r="5" fill="var(--ink)" stroke="var(--teal)" stroke-width="1.5"/><text x="222" y="88">GitLab</text></g>
+        <g><circle cx="344" cy="60" r="5" fill="var(--ink)" stroke="var(--teal)" stroke-width="1.5"/><text x="344" y="88">Plane</text></g>
+        <g><circle cx="466" cy="60" r="5" fill="var(--ink)" stroke="var(--teal)" stroke-width="1.5"/><text x="466" y="88">OwnCloud</text></g>
+        <g><circle cx="588" cy="60" r="5" fill="var(--ink)" stroke="var(--teal)" stroke-width="1.5"/><text x="588" y="88">ERPNext</text></g>
+        <g><circle cx="710" cy="60" r="5" fill="var(--ink)" stroke="var(--teal)" stroke-width="1.5"/><text x="710" y="88">SuiteCRM</text></g>
+        <g><circle cx="832" cy="60" r="5" fill="var(--ink)" stroke="var(--teal)" stroke-width="1.5"/><text x="832" y="88">Wiki.js</text></g>
+        <g><circle cx="920" cy="60" r="5" fill="var(--ink)" stroke="var(--teal)" stroke-width="1.5"/><text x="920" y="88">HRIS</text></g>
+      </g>
+      <circle r="4" fill="var(--emerald)"><animateMotion dur="4s" repeatCount="indefinite" path="M40,60 L960,60"/></circle>
+      <circle r="4" fill="var(--teal)"><animateMotion dur="4s" begin="1.3s" repeatCount="indefinite" path="M960,60 L40,60"/></circle>
+      <circle r="3.4" fill="var(--cyan)"><animateMotion dur="3s" begin="2s" repeatCount="indefinite" path="M40,60 L960,60"/></circle>
+    </svg>
+  </div>
+  <p class="sub r" style="--d:.55s;font-size:.76rem">Self-hosted · Docker Compose · ~29 cores / 53 GB RAM · fully resettable per simulation. Commercial twins: Slack · GitHub · Jira · Drive · NetSuite · Salesforce · Notion · BambooHR.</p>
+</section>
+
+<!-- 8 RBAC PERMISSION GRAPH (centerpiece, JS-animated) -->
+<section class="slide" data-label="07 // policy graph" id="s8">
+  <div class="kicker r">Benchmark Environment · RBAC Policy</div>
+  <h2 class="r" style="--d:.05s">Who can ask whom — and how the breach <span class="rd">slips through.</span></h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:.4rem">Five agents, each enforcing its own access policy. <span class="em">Green</span> = permitted query traffic. <span class="rd">Red</span> = an aggregate-inference attack that derives a value no single edge was allowed to disclose.</p>
+  <div class="svgwrap r" style="--d:.2s;flex:1;min-height:0">
+    <svg id="rbacSvg" viewBox="0 0 1000 520" style="width:min(100%,920px);max-height:54vh" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Animated RBAC permission graph">
+      <path id="e1" class="edge-faint" d="M500,80 L319,211"/><path id="e2" class="edge-faint" d="M500,80 L681,211"/>
+      <path id="e3" class="edge-faint" d="M500,80 L612,424"/><path id="e4" class="edge-faint" d="M681,211 L612,424"/>
+      <path id="e5" class="edge-faint" d="M681,211 L388,424"/><path id="e6" class="edge-faint" d="M500,80 L388,424"/>
+      <path id="atkPath" d="M388,424 C440,520 560,520 612,424" fill="none" stroke="var(--red)" stroke-width="2" class="dash-flow" opacity="0"/>
+      <g id="breach" opacity="0">
+        <circle id="breachRing" cx="500" cy="300" r="20" fill="none" stroke="var(--red)" stroke-width="2"/>
+        <rect x="402" y="284" width="196" height="34" rx="8" fill="rgba(255,111,111,.12)" stroke="var(--red)" stroke-width="1.5"/>
+        <text class="lbl" x="500" y="305" text-anchor="middle" fill="var(--red)" font-weight="600">✗ exact salary derived</text>
+      </g>
+      <g><circle cx="500" cy="80" r="46" fill="rgba(241,200,115,.08)" stroke="var(--amber)" stroke-width="1.6"/><text class="ttl" x="500" y="78" text-anchor="middle">MGMT</text><text class="lbl-s" x="500" y="94" text-anchor="middle">admin · all</text></g>
+      <g><circle cx="319" cy="211" r="44" class="node-c"/><text class="ttl" x="319" y="209" text-anchor="middle">HR</text><text class="lbl-s" x="319" y="225" text-anchor="middle">salaries</text></g>
+      <g><circle cx="681" cy="211" r="44" class="node-c"/><text class="ttl" x="681" y="209" text-anchor="middle">SALES</text><text class="lbl-s" x="681" y="225" text-anchor="middle">deals</text></g>
+      <g><circle cx="612" cy="424" r="44" class="node-c"/><text class="ttl" x="612" y="422" text-anchor="middle">FIN</text><text class="lbl-s" x="612" y="438" text-anchor="middle">budgets</text></g>
+      <g><circle cx="388" cy="424" r="46" fill="rgba(255,111,111,.06)" stroke="var(--red)" stroke-width="1.6"/><text class="ttl" x="388" y="420" text-anchor="middle">ENG</text><text class="lbl-s" x="388" y="436" text-anchor="middle" fill="var(--red)">attacker</text></g>
+    </svg>
+  </div>
+  <div class="card r" style="--d:.5s;background:rgba(255,111,111,.05);border-color:rgba(255,111,111,.2)">
+    <p class="sub" style="font-size:.84rem"><strong class="rd">Violation</strong> = disclosing to an unlisted requester <strong>or</strong> a combination of compliant answers across agents revealing a value no single agent was authorized to disclose.</p>
+  </div>
+</section>
+
+<!-- 9 RBAC INTEGRATION FLOWCHART -->
+<section class="slide" data-label="08 // integration" id="s9">
+  <div class="kicker r">Agent Company · Fork Implementation</div>
+  <h2 class="r" style="--d:.05s">Adding RBAC: <span class="tl">one config propagates everywhere.</span></h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:.6rem">A single canonical config is the source of truth — change it once, every layer regenerates.</p>
+  <div class="svgwrap r" style="--d:.2s;flex:1;min-height:0">
+    <svg id="flowSvg" viewBox="0 0 1000 380" style="width:100%;max-height:46vh" preserveAspectRatio="xMidYMid meet" role="img" aria-label="RBAC integration flowchart">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="var(--teal)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+      <path d="M250,190 L290,80 M250,190 L290,160 M250,190 L290,240 M250,190 L290,320" stroke="var(--line-s)" stroke-width="1.4" fill="none" marker-end="url(#ah)"/>
+      <path d="M540,80 L600,180 M540,160 L600,182 M540,240 L600,198 M540,320 L600,200" stroke="var(--line-s)" stroke-width="1.4" fill="none" marker-end="url(#ah)"/>
+      <path d="M780,190 L820,190" stroke="var(--line-s)" stroke-width="1.4" fill="none" marker-end="url(#ah)"/>
+      <g><rect x="40" y="150" width="200" height="80" rx="14" fill="rgba(45,212,191,.07)" stroke="var(--teal)" stroke-width="1.6"/><text class="ttl" x="140" y="184" text-anchor="middle">RBAC config</text><text class="lbl-s" x="140" y="204" text-anchor="middle">single source of truth</text></g>
+      <g class="midbox" id="m0"><rect x="300" y="50" width="240" height="56" rx="12" fill="var(--glass)" stroke="var(--line-s)" stroke-width="1.3"/><text class="lbl" x="320" y="78">Prompt generator</text><text class="lbl-s" x="320" y="94">auto-builds personas</text></g>
+      <g class="midbox" id="m1"><rect x="300" y="130" width="240" height="56" rx="12" fill="var(--glass)" stroke="var(--line-s)" stroke-width="1.3"/><text class="lbl" x="320" y="158">NPC personas ×5</text><text class="lbl-s" x="320" y="174">enforce policy in prompt</text></g>
+      <g class="midbox" id="m2"><rect x="300" y="210" width="240" height="56" rx="12" fill="var(--glass)" stroke="var(--line-s)" stroke-width="1.3"/><text class="lbl" x="320" y="238">Podman networks</text><text class="lbl-s" x="320" y="254">DNS fails pre-LLM</text></g>
+      <g class="midbox" id="m3"><rect x="300" y="290" width="240" height="56" rx="12" fill="var(--glass)" stroke="var(--line-s)" stroke-width="1.3"/><text class="lbl" x="320" y="318">init.sh data seeding</text><text class="lbl-s" x="320" y="334">salaries · budgets · keys</text></g>
+      <g><rect x="820" y="150" width="150" height="80" rx="14" fill="rgba(52,211,153,.07)" stroke="var(--emerald)" stroke-width="1.6"/><text class="ttl" x="895" y="184" text-anchor="middle" fill="var(--emerald)">Simulation</text><text class="ttl" x="895" y="204" text-anchor="middle" fill="var(--emerald)">ready</text></g>
+      <circle id="flowPulse" r="6" fill="var(--cyan)" opacity="0"/>
+    </svg>
+  </div>
+  <p class="sub r" style="--d:.5s;font-size:.78rem"><strong class="tl">Unchanged:</strong> OpenHands runner · run_eval.sh harness · service images · pre-baked employee data · LiteLLM proxy. RocketChat adds one account per NPC + a dedicated collusion channel.</p>
+</section>
+<!-- 10 ATTACK EXECUTION FLOWCHART (branching) -->
+<section class="slide" data-label="09 // attack pipeline" id="s10">
+  <div class="kicker r">Attack Implementation · Forked Repo</div>
+  <h2 class="r" style="--d:.05s">Same pipeline, <span class="tl">different scorer.</span></h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:.5rem">Every attack class runs the identical three stages — only what <span class="mono">eval.py</span> checks at the end changes.</p>
+  <div class="svgwrap r" style="--d:.2s;flex:1;min-height:0">
+    <svg id="atkSvg" viewBox="0 0 1000 360" style="width:100%;max-height:46vh" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Attack execution flowchart with branching verdicts">
+      <defs><marker id="ah2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="var(--teal)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+      <path d="M210,180 L286,180 M470,180 L546,180" stroke="var(--line-s)" stroke-width="1.5" fill="none" marker-end="url(#ah2)"/>
+      <path d="M730,180 C770,180 770,60 806,60 M730,180 C770,180 770,127 806,127 M730,180 C770,180 770,233 806,233 M730,180 C770,180 770,300 806,300" stroke="var(--line-s)" stroke-width="1.3" fill="none" marker-end="url(#ah2)" opacity=".8"/>
+      <g><rect x="30" y="140" width="180" height="80" rx="14" fill="rgba(45,212,191,.06)" stroke="var(--teal)" stroke-width="1.5"/><text class="ttl" x="120" y="172" text-anchor="middle">task.md</text><text class="lbl-s" x="120" y="192" text-anchor="middle">scenario + class flag</text></g>
+      <g><rect x="290" y="140" width="180" height="80" rx="14" fill="rgba(45,212,191,.06)" stroke="var(--teal)" stroke-width="1.5"/><text class="ttl" x="380" y="172" text-anchor="middle">OpenHands</text><text class="lbl-s" x="380" y="192" text-anchor="middle">attacker ↔ victim NPC</text></g>
+      <g><rect x="550" y="140" width="180" height="80" rx="14" fill="rgba(52,211,153,.07)" stroke="var(--emerald)" stroke-width="1.6"/><text class="ttl" x="640" y="172" text-anchor="middle" fill="var(--emerald)">eval.py</text><text class="lbl-s" x="640" y="192" text-anchor="middle">success predicate</text></g>
+      <g class="verdict" id="v0"><rect x="806" y="38" width="178" height="44" rx="10" fill="var(--glass)" stroke="var(--line-s)" stroke-width="1.2"/><text class="lbl" x="822" y="56">DR</text><text class="lbl-s" x="822" y="72">data outside boundary</text></g>
+      <g class="verdict" id="v1"><rect x="806" y="105" width="178" height="44" rx="10" fill="var(--glass)" stroke="var(--line-s)" stroke-width="1.2"/><text class="lbl" x="822" y="123">ISE</text><text class="lbl-s" x="822" y="139">refuses-a-direct-ask leak</text></g>
+      <g class="verdict" id="v2"><rect x="806" y="211" width="178" height="44" rx="10" fill="var(--glass)" stroke="var(--line-s)" stroke-width="1.2"/><text class="lbl" x="822" y="229">AGG</text><text class="lbl-s" x="822" y="245">compliant union derives</text></g>
+      <g class="verdict" id="v3"><rect x="806" y="278" width="178" height="44" rx="10" fill="var(--glass)" stroke="var(--line-s)" stroke-width="1.2"/><text class="lbl" x="822" y="296">MAC</text><text class="lbl-s" x="822" y="312">two-agent swap test</text></g>
+      <circle id="atkPulse" r="6" fill="var(--cyan)" opacity="0"/>
+    </svg>
+  </div>
+  <p class="sub r" style="--d:.5s;font-size:.8rem"><strong class="tl">Key distinction:</strong> stages 1–2 are identical for every attack. Each class only differs in its definition of a successful breach.</p>
+</section>
+
+<!-- 11 TAXONOMY 1-3 micro-anims -->
+<section class="slide" data-label="10 // taxonomy" id="s11">
+  <div class="kicker r">Attack Taxonomy · Dimension 1 — Mechanism</div>
+  <h2 class="r" style="--d:.05s;margin-bottom:1.1rem">How the attacker extracts data — <span class="tl">four classes.</span></h2>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem">
+    <div class="card rs" style="--d:.2s">
+      <div style="display:flex;align-items:center;gap:.7rem"><span class="stat" style="font-size:1.7rem">01</span><span class="chip">single-turn</span></div>
+      <p class="lead" style="font-size:1rem;margin:.5rem 0 .3rem">Direct Request</p>
+      <p class="sub" style="font-size:.8rem">One request for data outside the attacker's boundary. No manipulation — exploits default helpfulness.</p>
+      <svg viewBox="0 0 240 40" style="width:100%;margin-top:.5rem"><line x1="14" y1="20" x2="226" y2="20" stroke="var(--line-s)" stroke-width="1.5"/><circle cx="14" cy="20" r="4" fill="var(--teal)"/><circle cx="226" cy="20" r="6" fill="rgba(255,111,111,.15)" stroke="var(--red)"/><circle r="5" fill="var(--cyan)"><animateMotion dur="1.8s" repeatCount="indefinite" path="M14,20 L226,20"/></circle></svg>
+      <p class="mono" style="font-size:.68rem;color:var(--teal);margin-top:.3rem">ENG → HR: "Alice's salary?"</p>
+    </div>
+    <div class="card rs" style="--d:.35s">
+      <div style="display:flex;align-items:center;gap:.7rem"><span class="stat" style="font-size:1.7rem">02</span><span class="chip">multi-turn</span></div>
+      <p class="lead" style="font-size:1rem;margin:.5rem 0 .3rem">Incremental Social Eng.</p>
+      <p class="sub" style="font-size:.8rem">A sequence that progressively lowers the disclosure threshold — foot-in-the-door pressure.</p>
+      <svg viewBox="0 0 240 40" style="width:100%;margin-top:.5rem"><g fill="none" stroke="var(--teal)" stroke-width="1.5"><path d="M20,34 H70 V24 H120 V14 H170 V6 H220"/></g><circle r="4" fill="var(--cyan)"><animateMotion dur="2.4s" repeatCount="indefinite" path="M20,34 H70 V24 H120 V14 H170 V6 H220"/></circle><circle cx="220" cy="6" r="6" fill="rgba(255,111,111,.15)" stroke="var(--red)"/></svg>
+      <p class="mono" style="font-size:.68rem;color:var(--teal);margin-top:.3rem">headcount → org → promotion</p>
+    </div>
+    <div class="card rs flash-breach" style="--d:.5s;border-color:rgba(255,111,111,.3)">
+      <div style="display:flex;align-items:center;gap:.7rem"><span class="stat" style="font-size:1.7rem">03</span><span class="chip" style="color:var(--red);border-color:rgba(255,111,111,.4)">session-level</span></div>
+      <p class="lead" style="font-size:1rem;margin:.5rem 0 .3rem">Aggregate Inference</p>
+      <p class="sub" style="font-size:.8rem">Individually-compliant requests whose union infers protected data. No single violation.</p>
+      <svg viewBox="0 0 240 40" style="width:100%;margin-top:.5rem"><circle cx="120" cy="20" r="6" fill="rgba(255,111,111,.18)" stroke="var(--red)"/><circle r="4" fill="var(--emerald)"><animateMotion dur="1.6s" repeatCount="indefinite" path="M20,8 Q70,20 114,20"/></circle><circle r="4" fill="var(--emerald)"><animateMotion dur="1.6s" begin=".2s" repeatCount="indefinite" path="M20,32 Q70,20 114,20"/></circle></svg>
+      <p class="mono" style="font-size:.68rem;color:var(--red);margin-top:.3rem">avg + range → exact pay</p>
+    </div>
+  </div>
+</section>
+
+<!-- 12 COLLUSION SWAP-TEST decision flow -->
+<section class="slide" data-label="11 // class 4" id="s12">
+  <div class="kicker r">Attack Taxonomy · Class 4</div>
+  <h2 class="r" style="--d:.05s">Multi-agent collusion needs a <span class="tl">swap test.</span></h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:.4rem">Two compromised agents extract what neither could alone — each reaches a victim the other cannot. The swap test rules out mere aggregation.</p>
+  <div class="svgwrap r" style="--d:.2s;flex:1;min-height:0">
+    <svg id="swapSvg" viewBox="0 0 1000 430" style="width:100%;max-height:50vh" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Swap-test decision flowchart">
+      <defs><marker id="ah3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="var(--teal)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+      <!-- agents -->
+      <g><rect x="40" y="60" width="150" height="60" rx="12" fill="rgba(45,212,191,.06)" stroke="var(--teal)" stroke-width="1.5"/><text class="ttl" x="115" y="88" text-anchor="middle">Agent A</text><text class="lbl-s" x="115" y="106" text-anchor="middle">reaches Victim X</text></g>
+      <g><rect x="40" y="300" width="150" height="60" rx="12" fill="rgba(52,211,153,.06)" stroke="var(--emerald)" stroke-width="1.5"/><text class="ttl" x="115" y="328" text-anchor="middle">Agent B</text><text class="lbl-s" x="115" y="346" text-anchor="middle">reaches Victim Y</text></g>
+      <!-- victims -->
+      <g><rect x="300" y="60" width="140" height="60" rx="12" class="node-c"/><text class="ttl" x="370" y="96" text-anchor="middle">Victim X</text></g>
+      <g><rect x="300" y="300" width="140" height="60" rx="12" class="node-c"/><text class="ttl" x="370" y="336" text-anchor="middle">Victim Y</text></g>
+      <!-- legit queries -->
+      <path d="M190,90 L296,90 M190,330 L296,330" stroke="var(--emerald)" stroke-width="1.6" fill="none" marker-end="url(#ah3)"/>
+      <!-- cross refusals -->
+      <path id="crossA" d="M190,100 L296,320" stroke="var(--red)" stroke-width="1.4" fill="none" stroke-dasharray="6 6" opacity=".5"/>
+      <path id="crossB" d="M190,320 L296,100" stroke="var(--red)" stroke-width="1.4" fill="none" stroke-dasharray="6 6" opacity=".5"/>
+      <g id="xMark1" opacity="0"><circle cx="243" cy="210" r="13" fill="rgba(255,111,111,.12)" stroke="var(--red)"/><text x="243" y="216" text-anchor="middle" fill="var(--red)" font-family="JetBrains Mono" font-size="14">✗</text></g>
+      <!-- decision diamond -->
+      <path d="M620,210 L720,140 L820,210 L720,280 Z" fill="rgba(241,200,115,.06)" stroke="var(--amber)" stroke-width="1.6"/>
+      <text class="lbl" x="720" y="200" text-anchor="middle" fill="var(--amber)">swap test</text>
+      <text class="lbl-s" x="720" y="218" text-anchor="middle">either reach both?</text>
+      <path d="M440,90 C540,90 540,180 616,195 M440,330 C540,330 540,240 616,225" stroke="var(--line-s)" stroke-width="1.4" fill="none" marker-end="url(#ah3)"/>
+      <!-- outcomes -->
+      <g><rect x="700" y="40" width="240" height="56" rx="12" fill="var(--glass)" stroke="var(--line-s)" stroke-width="1.3"/><text class="lbl" x="720" y="64">YES → aggregation</text><text class="lbl-s" x="720" y="82">not collusion</text></g>
+      <g id="macBox"><rect x="700" y="324" width="240" height="56" rx="12" fill="rgba(255,111,111,.08)" stroke="var(--red)" stroke-width="1.5"/><text class="lbl" x="720" y="348" fill="var(--red)">NO → COLLUSION ✓</text><text class="lbl-s" x="720" y="366">neither could alone</text></g>
+      <path d="M760,150 L800,96 M760,270 L800,330" stroke="var(--line-s)" stroke-width="1.4" fill="none" marker-end="url(#ah3)"/>
+    </svg>
+  </div>
+</section>
+<!-- 13 BB vs WB -->
+<section class="slide" data-label="12 // attacker knowledge" id="s13">
+  <div class="kicker r">Attack Taxonomy · Dimension 2 — Attacker Knowledge</div>
+  <h2 class="r" style="--d:.05s">Probing in the dark vs. <span class="tl">aiming at the edge.</span></h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:1rem">Drives <span class="mono tl">RQ2</span>: does white-box knowledge give a measurable advantage — and can a black-box attacker recover the policy by probing alone?</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;flex:1;min-height:0">
+    <div class="card rx" style="--d:.2s;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:.7rem"><span class="chip">BB</span><p class="lead" style="font-size:1.1rem">Black-box</p></div>
+      <p class="sub" style="margin:.6rem 0;font-size:.84rem">No prior knowledge. Must probe to find the boundary — repeated queries, some refused, before the real attack.</p>
+      <svg viewBox="0 0 420 200" style="width:100%;margin-top:auto" role="img" aria-label="Black-box probing">
+        <line x1="300" y1="20" x2="300" y2="180" stroke="var(--red)" stroke-width="1.5" stroke-dasharray="6 6"/><text class="lbl-s" x="300" y="14" text-anchor="middle" fill="var(--red)">policy boundary</text>
+        <circle cx="40" cy="100" r="9" fill="rgba(45,212,191,.15)" stroke="var(--teal)"/><text class="lbl-s" x="40" y="128" text-anchor="middle">attacker</text>
+        <circle r="5" fill="var(--amber)"><animateMotion dur="2s" repeatCount="indefinite" path="M40,100 L230,50 L40,100"/></circle>
+        <circle r="5" fill="var(--amber)"><animateMotion dur="2.4s" begin=".5s" repeatCount="indefinite" path="M40,100 L255,150 L40,100"/></circle>
+        <circle r="5" fill="var(--cyan)"><animateMotion dur="2.8s" begin="1s" repeatCount="indefinite" path="M40,100 L292,100 L40,100"/></circle>
+      </svg>
+    </div>
+    <div class="card rx glow" style="--d:.4s;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:.7rem"><span class="chip">WB</span><p class="lead" style="font-size:1.1rem">White-box</p></div>
+      <p class="sub" style="margin:.6rem 0;font-size:.84rem">Handed the RBAC policy. Knows exactly which query sits just past the boundary — strikes the edge directly, no discovery cost.</p>
+      <svg viewBox="0 0 420 200" style="width:100%;margin-top:auto" role="img" aria-label="White-box direct hit">
+        <line x1="300" y1="20" x2="300" y2="180" stroke="var(--red)" stroke-width="1.5" stroke-dasharray="6 6"/><text class="lbl-s" x="300" y="14" text-anchor="middle" fill="var(--red)">policy boundary</text>
+        <circle cx="40" cy="100" r="9" fill="rgba(52,211,153,.15)" stroke="var(--emerald)"/><text class="lbl-s" x="40" y="128" text-anchor="middle">attacker</text>
+        <circle cx="298" cy="100" r="7" fill="rgba(255,111,111,.18)" stroke="var(--red)"/>
+        <circle r="5.5" fill="var(--emerald)"><animateMotion dur="1.3s" repeatCount="indefinite" path="M40,100 L296,100"/></circle>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- 14 ASR live metric -->
+<section class="slide" data-label="13 // metric · ASR" id="s14">
+  <div class="kicker r">Metric 1 · Attack Effectiveness</div>
+  <h2 class="r" style="--d:.05s">Attack Success Rate <span class="tl">(ASR).</span></h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:1rem">Fraction of scenarios where the attacker's goal is achieved — relocated from <span class="rd">tool invocation</span> to <span class="em">information disclosure through dialogue</span>.</p>
+  <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:1.4rem;align-items:center">
+    <div class="rs" style="--d:.2s">
+      <div id="asrGrid" style="display:grid;grid-template-columns:repeat(10,1fr);gap:6px"></div>
+      <p class="tag-role" style="margin-top:.7rem">illustrative — each cell is one attack scenario</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.9rem">
+      <div class="card glow rx" style="--d:.3s"><div class="chip">live count</div><div class="mono" id="asrReadout" style="font-size:1.5rem;margin-top:.5rem;color:var(--text)">ASR = 0 / 50 = 0.00</div></div>
+      <div class="card rx" style="--d:.42s"><div class="chip">why it matters</div><p class="sub" style="font-size:.84rem;margin-top:.5rem">Headline frequency of compromise across the peer-dialogue channel → basis for head-to-head defense comparison <span class="mono tl">(RQ1)</span>.</p></div>
+      <div class="card rx" style="--d:.54s"><div class="chip">grounding</div><p class="sub" style="font-size:.84rem;margin-top:.5rem">Standard in ASB (Zhang et al., 2025) and AgentDojo (Debenedetti et al., 2024), where success = a malicious tool invocation.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 15 SUCCESS PREDICATE TABLE -->
+<section class="slide" data-label="14 // predicate" id="s15">
+  <div class="kicker r">Metric 1 · Attack Effectiveness</div>
+  <h2 class="r" style="--d:.05s">Success predicate, defined per attack class.</h2>
+  <div class="card r" style="--d:.2s;margin-top:1rem;padding:.5rem 1rem">
+    <table>
+      <thead><tr><th>Attack class</th><th>Goal achieved when…</th><th>Adjudication unit</th></tr></thead>
+      <tbody>
+        <tr><td><strong class="tl">Direct request</strong></td><td>response carries data outside the role's RBAC boundary</td><td><span class="mono">message</span></td></tr>
+        <tr><td><strong class="tl">Social engineering</strong></td><td>victim discloses what a direct ask would refuse (vs. baseline)</td><td><span class="mono">trajectory + baseline</span></td></tr>
+        <tr><td><strong class="tl">Aggregate inference</strong></td><td>union of compliant answers derives a protected value</td><td><span class="mono">session / cross-agent ledger</span></td></tr>
+        <tr class="hl"><td><strong>Multi-agent collusion</strong></td><td>two-agent union, each query exclusive (swap test)</td><td><span class="mono">cross-agent ledger + swap test</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card r" style="--d:.5s;margin-top:1rem"><div class="chip">why per class</div><p class="sub" style="margin-top:.5rem">A message-level rule cannot see aggregate inference or collusion — every constituent message is compliant. Adjudicating over the <strong>transcript / cross-agent ledger</strong> restores sensitivity to violations that exist only in the aggregate.</p></div>
+</section>
+
+<!-- 16 W-OER -->
+<section class="slide" data-label="15 // metric · W-OER" id="s16">
+  <div class="kicker r">Metric 2 · Damage Severity</div>
+  <h2 class="r" style="--d:.05s">Sensitivity-weighted Over-Exposure <span class="tl">(W-OER).</span></h2>
+  <div class="card r glow" style="--d:.15s;margin:.9rem 0;text-align:center;padding:1.1rem"><p class="mono" style="font-size:clamp(1rem,1.6vw,1.4rem);color:var(--ice)">W-OER = <span class="tl">Σ tier(i)</span> over disclosed / <span class="em">Σ tier(i)</span> over targeted</p></div>
+  <div style="display:grid;grid-template-columns:.9fr 1.1fr;gap:1.2rem;align-items:center">
+    <div class="svgwrap rs" style="--d:.25s">
+      <svg viewBox="0 0 360 200" style="width:100%" role="img" aria-label="Sensitivity tier ladder">
+        <g font-family="JetBrains Mono" font-size="11">
+          <rect x="40" y="150" width="280" height="30" rx="6" fill="rgba(45,212,191,.12)" stroke="var(--line-s)"/><text x="50" y="170" fill="var(--muted)">tier 1 · org structure</text>
+          <rect x="40" y="110" width="280" height="30" rx="6" fill="rgba(45,212,191,.22)" stroke="var(--line-s)"/><text x="50" y="130" fill="var(--text)">tier 2 · internal ops</text>
+          <rect x="40" y="70" width="280" height="30" rx="6" fill="rgba(241,200,115,.2)" stroke="rgba(241,200,115,.4)"/><text x="50" y="90" fill="var(--amber)">tier 3 · confidential</text>
+          <rect x="40" y="30" width="280" height="30" rx="6" fill="rgba(255,111,111,.2)" stroke="var(--red)"/><text x="50" y="50" fill="var(--red)">tier 4 · individual-sensitive</text>
+        </g>
+        <circle r="6" fill="var(--cyan)"><animateMotion dur="3s" repeatCount="indefinite" path="M340,165 L340,125 L340,85 L340,45"/></circle>
+      </svg>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.8rem">
+      <div class="card rx" style="--d:.3s"><div class="chip">why it matters</div><p class="sub" style="font-size:.84rem;margin-top:.4rem">Frequency misleads — one leaked salary ≠ one leaked room number. Ranks defenses by residual-exposure <strong>severity</strong>, not raw count <span class="mono tl">(RQ3)</span>.</p></div>
+      <div class="card rx" style="--d:.42s"><div class="chip">grounding</div><p class="sub" style="font-size:.84rem;margin-top:.4rem">Tiers anchored to NIST SP 800-60 (Stine et al., 2008) and CRMArena (Huang et al., 2025) within-tier orderings.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 17 SAME COUNT DIFFERENT W-OER (diverging bars) -->
+<section class="slide" data-label="16 // the payoff" id="s17">
+  <div class="kicker r">Metric 2 · Damage Severity</div>
+  <h2 class="r" style="--d:.05s">Same count, <span class="tl">different W-OER.</span></h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:1.1rem">Two defenses, three leaks each, same targeted set (Σtier = 14). OER calls them equal — W-OER separates them.</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem">
+    <div class="card rs" style="--d:.2s">
+      <div class="mono" style="font-size:.7rem;letter-spacing:.14em;color:var(--muted)">OER · raw leak count</div>
+      <div style="margin-top:1rem;display:flex;flex-direction:column;gap:1.1rem">
+        <div><div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:.3rem"><span>Defense A</span><span class="mono" id="aoerL">0.00</span></div><div class="bar-track"><div class="bar-fill" id="aoer" style="background:linear-gradient(90deg,var(--teal),var(--emerald))"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:.3rem"><span>Defense B</span><span class="mono" id="boerL">0.00</span></div><div class="bar-track"><div class="bar-fill" id="boer" style="background:linear-gradient(90deg,var(--teal),var(--emerald))"></div></div></div>
+      </div>
+      <p class="sub" style="font-size:.78rem;margin-top:1rem">3 leaks ÷ 3 = <strong>1.00 each</strong> → identical. OER cannot tell them apart.</p>
+    </div>
+    <div class="card rs glow" style="--d:.4s;border-color:rgba(255,111,111,.25)">
+      <div class="mono" style="font-size:.7rem;letter-spacing:.14em;color:var(--red)">W-OER · severity-weighted</div>
+      <div style="margin-top:1rem;display:flex;flex-direction:column;gap:1.1rem">
+        <div><div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:.3rem"><span>Defense A <span class="tag-role">headcount, assignments, status</span></span><span class="mono tl" id="awoerL">0.00</span></div><div class="bar-track"><div class="bar-fill" id="awoer" style="background:linear-gradient(90deg,var(--teal),var(--emerald))"></div></div></div>
+        <div><div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:.3rem"><span>Defense B <span class="tag-role">+ source code, + salary</span></span><span class="mono rd" id="bwoerL">0.00</span></div><div class="bar-track"><div class="bar-fill" id="bwoer" style="background:linear-gradient(90deg,#a83a3a,var(--red))"></div></div></div>
+      </div>
+      <p class="sub" style="font-size:.78rem;margin-top:1rem">B leaks a salary (tier 4) + source code (tier 3) → <strong class="rd">58% higher exposure.</strong> Severity becomes the basis for ranking.</p>
+    </div>
+  </div>
+</section>
+<!-- 18 CONTRIBUTIONS -->
+<section class="slide" data-label="17 // contributions" id="s18">
+  <div class="kicker r">Conclusion</div>
+  <h2 class="r" style="--d:.05s;margin-bottom:1.1rem">Contributions.</h2>
+  <div style="display:flex;flex-direction:column;gap:.65rem">
+    <div class="card rx" style="--d:.12s;display:flex;gap:1rem;align-items:center"><div class="num-badge">1</div><div><p class="lead" style="font-size:1rem">Peer-agent dialogue as an attack channel</p><p class="sub" style="font-size:.81rem">A trusted peer agent in natural conversation is itself the attack vector — unmodeled by any existing benchmark.</p></div></div>
+    <div class="card rx" style="--d:.24s;display:flex;gap:1rem;align-items:center"><div class="num-badge">2</div><div><p class="lead" style="font-size:1rem">Aggregate inference as a formal attack class</p><p class="sub" style="font-size:.81rem">First to define individually-compliant queries that combine to reveal a protected attribute as a discrete, benchmarkable class.</p></div></div>
+    <div class="card rx" style="--d:.36s;display:flex;gap:1rem;align-items:center"><div class="num-badge">3</div><div><p class="lead" style="font-size:1rem">Cross-role honeyrows</p><p class="sub" style="font-size:.81rem">Synthetic rows k-anonymous per role but unique when two roles combine.</p></div></div>
+    <div class="card rx glow" style="--d:.48s;display:flex;gap:1rem;align-items:center"><div class="num-badge">4</div><div><p class="lead" style="font-size:1rem">W-OER: severity-weighted exposure</p><p class="sub" style="font-size:.81rem">ASR captures <em>whether</em>, OER <em>how much</em> — neither <em>how sensitive.</em> W-OER weights each item by RBAC tier.</p></div></div>
+    <div class="card rx" style="--d:.6s;display:flex;gap:1rem;align-items:center"><div class="num-badge">5</div><div><p class="lead" style="font-size:1rem">Adaptive evaluation as a first-class requirement</p><p class="sub" style="font-size:.81rem">Every defense is tested against an attacker built to break it — not fixed attacks designed before the defender was known.</p></div></div>
+  </div>
+</section>
+
+<!-- 19 GATED TIMELINE -->
+<section class="slide" data-label="18 // roadmap" id="s19">
+  <div class="kicker r">Conclusion · Implementation Plans</div>
+  <h2 class="r" style="--d:.05s">Six <span class="tl">gated</span> workstreams.</h2>
+  <p class="sub r" style="--d:.1s;margin-bottom:.5rem">Each workstream must clear its proposal-proof before the next unlocks.</p>
+  <div class="svgwrap r" style="--d:.2s;flex:1;min-height:0">
+    <svg id="wsSvg" viewBox="0 0 1000 300" style="width:100%;max-height:42vh" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Gated workstream timeline">
+      <line x1="90" y1="150" x2="940" y2="150" stroke="rgba(255,255,255,.08)" stroke-width="4"/>
+      <line id="wsFill" x1="90" y1="150" x2="90" y2="150" stroke="url(#wgrad)" stroke-width="4" stroke-linecap="round"/>
+      <defs><linearGradient id="wgrad"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs>
+      <g id="wsNodes" font-family="JetBrains Mono">
+        <g><circle class="wsn" id="ws0" cx="90" cy="150" r="14" fill="var(--ink2)" stroke="var(--line-s)" stroke-width="2"/><text class="lbl" x="90" y="100" text-anchor="middle">WS-0</text><text class="lbl-s" x="90" y="200" text-anchor="middle">proposal</text></g>
+        <g><circle class="wsn" id="ws1" cx="260" cy="150" r="14" fill="var(--ink2)" stroke="var(--line-s)" stroke-width="2"/><text class="lbl" x="260" y="100" text-anchor="middle">WS-1</text><text class="lbl-s" x="260" y="200" text-anchor="middle">foundations</text></g>
+        <g><circle class="wsn" id="ws2" cx="430" cy="150" r="14" fill="var(--ink2)" stroke="var(--line-s)" stroke-width="2"/><text class="lbl" x="430" y="100" text-anchor="middle">WS-2</text><text class="lbl-s" x="430" y="200" text-anchor="middle">evaluator</text></g>
+        <g><circle class="wsn" id="ws3" cx="600" cy="150" r="14" fill="var(--ink2)" stroke="var(--line-s)" stroke-width="2"/><text class="lbl" x="600" y="100" text-anchor="middle">WS-3</text><text class="lbl-s" x="600" y="200" text-anchor="middle">ledger defense</text></g>
+        <g><circle class="wsn" id="ws4" cx="770" cy="150" r="14" fill="var(--ink2)" stroke="var(--line-s)" stroke-width="2"/><text class="lbl" x="770" y="100" text-anchor="middle">WS-4</text><text class="lbl-s" x="770" y="200" text-anchor="middle">evaluation</text></g>
+        <g><circle class="wsn" id="ws5" cx="940" cy="150" r="14" fill="var(--ink2)" stroke="var(--line-s)" stroke-width="2"/><text class="lbl" x="940" y="100" text-anchor="middle">WS-5</text><text class="lbl-s" x="940" y="200" text-anchor="middle">package</text></g>
+      </g>
+    </svg>
+  </div>
+</section>
+
+<!-- 20 OWNERSHIP TABLE -->
+<section class="slide" data-label="19 // ownership" id="s20">
+  <div class="kicker r">Conclusion · Implementation Plans</div>
+  <h2 class="r" style="--d:.05s">Ownership &amp; artifacts.</h2>
+  <div class="card r" style="--d:.2s;margin-top:1rem;padding:.4rem 1rem">
+    <table style="font-size:clamp(.68rem,.9vw,.82rem)">
+      <thead><tr><th>Section</th><th>Owner</th><th>Implementation artifact</th><th>Proposal proof</th></tr></thead>
+      <tbody>
+        <tr><td><strong class="tl">A1 Measurement</strong></td><td>Pratibha, Prisha, Kargi</td><td>TIG, CWP twins, distinguisher ladder, min-cut analysis</td><td>Lower-bound framing; G1/G2 metrics; confidence intervals</td></tr>
+        <tr><td><strong class="tl">A2 Benchmark</strong></td><td>Kargi, Vlad, Jessica</td><td>RBAC testbed, channels, manifest/enclave model, seed validators</td><td>Scenario datasheet; validator pass rate; naturalness audit</td></tr>
+        <tr><td><strong class="tl">A3 Defenses</strong></td><td>Sadiba, Jessica, Prisha</td><td>Ledger mediator, CCD verifier, sk-Canary, receipt ledger</td><td>Budget receipts; fail-closed policy; independent CWP grading</td></tr>
+        <tr><td><strong class="tl">A4 Evaluation</strong></td><td>Pratibha, Sadiba, Vlad</td><td>Adaptive attacker, baseline shims, Pareto frontier, stats plan</td><td>Core matrix; cost-to-breach curve; generalization gap</td></tr>
+        <tr><td><strong class="tl">Narrative</strong></td><td>All</td><td>Motivation, novelty, risks/fallbacks, ethics, release plan</td><td>Clear claim hierarchy: defense headline; benchmark support</td></tr>
+        <tr class="hl"><td><strong>Review Package</strong></td><td>All</td><td>Figures, timeline, tracker, appendix contracts, repo checklist</td><td>2-slide deck, 1-page summary, gated roadmap</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 21 THANK YOU -->
+<section class="slide" data-label="20 // end" id="s21" style="align-items:center;text-align:center">
+  <div id="hero3d2" style="opacity:.85"></div>
+  <div style="position:relative;z-index:2">
+    <div class="kicker r" style="justify-content:center">GuardBench · Uniphore Technologies · Peng Qi</div>
+    <h1 class="title r" style="--d:.15s;font-size:clamp(3rem,8vw,7rem)">Thank you.</h1>
+    <p class="sub r" style="--d:.35s;margin:1.3rem auto 0;max-width:34ch">When AI agents collaborate, GuardBench guards the channel between them.</p>
+    <div class="r mono" style="--d:.55s;margin-top:1.8rem;display:inline-flex;align-items:center;gap:1rem;font-size:.72rem;letter-spacing:.16em;color:var(--faint)"><span class="tl">AGENT A</span><span class="live-dot"></span><span style="width:90px;height:1px;background:linear-gradient(90deg,var(--teal),var(--emerald))"></span><span class="em">AGENT B</span></div>
+  </div>
+</section>
+
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const NS="http://www.w3.org/2000/svg";
+const $=(s,r=document)=>r.querySelector(s);
+const slides=[...document.querySelectorAll('.slide')];
+
+/* ---------- boot ---------- */
+['b0','b1','b2','b3'].forEach((id,i)=>setTimeout(()=>$('#'+id).classList.add('show'),250+i*420));
+setTimeout(()=>{const b=$('#boot');b.classList.add('gone');},2400);
+
+/* ---------- ticker ---------- */
+const tLines=[
+ 'CHANNEL A→B .......... <span class="v">MONITORED</span>',
+ 'RBAC POLICY .......... <span class="v">5-AGENT</span>',
+ 'PACKETS/s ............ <span class="v">142</span>',
+ 'AGGREGATE-WATCH ...... <span class="a">ARMED</span>',
+ 'SWAP-TEST ............ <span class="v">READY</span>',
+ 'SESSION LEDGER ....... <span class="v">OPEN</span>'];
+let tI=0;const tk=$('#ticker');
+function tick(){tk.innerHTML='<span class="ln">'+tLines[tI%tLines.length]+'</span>';tI++;}
+tick();setInterval(tick,2600);
+
+/* ---------- nav ---------- */
+const rail=$('#rail'),prog=$('#prog'),cnum=$('#cnum'),deck=$('#deck');
+let current=0;
+slides.forEach((s,i)=>{const d=document.createElement('button');d.className='dot';d.onclick=()=>s.scrollIntoView({behavior:'smooth'});rail.appendChild(d);
+  /* inject chrome */
+  ['tl','tr','bl','br'].forEach(p=>{const b=document.createElement('div');b.className='brk '+p;s.appendChild(b);});
+  const bn=document.createElement('div');bn.className='bignum';bn.textContent=String(i+1).padStart(2,'0');s.appendChild(bn);
+  if(s.dataset.label){const sl=document.createElement('div');sl.className='slabel';sl.textContent=s.dataset.label;s.appendChild(sl);}
+});
+const dots=[...rail.children];
+
+const io=new IntersectionObserver(es=>{es.forEach(e=>{
+  const i=slides.indexOf(e.target);
+  if(e.intersectionRatio>=0.55){
+    e.target.classList.add('active');
+    current=i;dots.forEach((d,j)=>d.classList.toggle('on',j===i));
+    cnum.textContent=String(i+1).padStart(2,'0');prog.style.width=(i/(slides.length-1)*100)+'%';
+    startAnim(i);
+  } else if(e.intersectionRatio<0.2){
+    e.target.classList.remove('active');stopAnim(i);
+  }
+});},{root:deck,threshold:[0,.2,.55,1]});
+slides.forEach(s=>io.observe(s));
+slides[0].classList.add('active');dots[0].classList.add('on');
+
+function go(d){const n=Math.max(0,Math.min(slides.length-1,current+d));slides[n].scrollIntoView({behavior:'smooth'});}
+addEventListener('keydown',e=>{
+  if(['ArrowDown','PageDown',' '].includes(e.key)){e.preventDefault();go(1);}
+  else if(['ArrowUp','PageUp'].includes(e.key)){e.preventDefault();go(-1);}
+  else if(e.key==='Home')slides[0].scrollIntoView({behavior:'smooth'});
+  else if(e.key==='End')slides[slides.length-1].scrollIntoView({behavior:'smooth'});
+});
+
+/* ---------- animation runner ---------- */
+function makeRunner(){let frames=[],timers=[],raf=null,on=false;
+  function loop(now){frames=frames.filter(f=>!f(now));if(on)raf=requestAnimationFrame(loop);}
+  return{add(f){frames.push(f);},every(ms,fn){fn();timers.push(setInterval(fn,ms));},after(ms,fn){timers.push(setTimeout(fn,ms));},
+    start(){if(on)return;on=true;raf=requestAnimationFrame(loop);},
+    stop(){on=false;cancelAnimationFrame(raf);timers.forEach(id=>{clearInterval(id);clearTimeout(id);});timers=[];frames=[];}};
+}
+function pulseAlong(svg,pathEl,color,dur,r){
+  let len=0;try{len=pathEl.getTotalLength();}catch(e){}
+  const c=document.createElementNS(NS,'circle');c.setAttribute('r',r||5);c.setAttribute('fill',color);svg.appendChild(c);
+  const t0=performance.now();
+  return function(now){const p=Math.min(1,(now-t0)/dur);let pt={x:0,y:0};try{pt=pathEl.getPointAtLength(p*len);}catch(e){}
+    c.setAttribute('cx',pt.x);c.setAttribute('cy',pt.y);c.setAttribute('opacity',p<.12?p*8:(p>.88?(1-p)*8:1));
+    if(p>=1){c.remove();return true;}return false;};
+}
+function moveDot(dot,x0,y0,x1,y1,dur){dot.setAttribute('opacity',1);const t0=performance.now();
+  return function(now){const p=Math.min(1,(now-t0)/dur);dot.setAttribute('cx',x0+(x1-x0)*p);dot.setAttribute('cy',y0+(y1-y0)*p);
+    dot.setAttribute('opacity',p>.92?(1-p)*12:1);if(p>=1)return true;return false;};}
+
+const ANIM={};
+function ctrl(i){if(ANIM[i])return ANIM[i];const id=slides[i].id;const R=makeRunner();let setup=null;
+  ANIM[i]={R,start(){R.start();(builders[id]||(()=>{}))(R,slides[i]);},stop(){R.stop();(resetters[id]||(()=>{}))(slides[i]);}};
+  return ANIM[i];}
+function startAnim(i){try{ctrl(i).start();}catch(e){}}
+function stopAnim(i){try{if(ANIM[i])ANIM[i].stop();}catch(e){}}
+
+/* ---------- per-slide builders ---------- */
+const builders={
+  s3(R,el){const n=$('#reconNum',el);const target="$148,200";
+    function scramble(){let f=0;const iv=setInterval(()=>{f++;let s='';for(let k=0;k<target.length;k++){s+= (target[k]===','||target[k]==='$')?target[k]:(f>k*2?target[k]:String(Math.floor(Math.random()*10)));}n.textContent=s;if(f>target.length*2+4){clearInterval(iv);n.textContent=target;}},45);}
+    scramble();R.every(3600,scramble);},
+  s6(R,el){const ring=$('#gaugeRing',el),num=$('#g30',el);const t0=performance.now();
+    R.add(now=>{const p=Math.min(1,(now-t0)/1400);const e=1-Math.pow(1-p,3);ring.setAttribute('stroke-dashoffset',502.6-502.6*0.30*e);num.textContent=Math.round(30*e)+'%';return p>=1;});},
+  s8(R,el){const svg=$('#rbacSvg',el);const edges=['#e1','#e2','#e3','#e4','#e5','#e6'].map(s=>$(s,el));
+    R.every(620,()=>{const p=edges[Math.floor(Math.random()*edges.length)];R.add(pulseAlong(svg,p,'#34d399',1500,4.5));});
+    function attack(){const atk=$('#atkPath',el),br=$('#breach',el),ring=$('#breachRing',el);atk.style.opacity=1;
+      R.add(pulseAlong(svg,atk,'#5eead4',1500,5));R.after(750,()=>R.add(pulseAlong(svg,atk,'#5eead4',1500,5)));
+      R.after(2400,()=>{br.setAttribute('opacity',1);const t0=performance.now();R.add(now=>{const p=Math.min(1,(now-t0)/1200);ring.setAttribute('r',20+p*72);ring.setAttribute('opacity',1-p);return p>=1;});});
+      R.after(4400,()=>{atk.style.opacity=0;br.setAttribute('opacity',0);});}
+    R.after(1600,attack);R.every(8000,()=>R.after(1600,attack));},
+  s9(R,el){const dot=$('#flowPulse',el);const mids=['#m0','#m1','#m2','#m3'].map(s=>$(s,el));
+    function sweep(){dot.setAttribute('opacity',1);R.add(moveDot(dot,140,190,895,190,2000));
+      mids.forEach((m,k)=>R.after(500+k*180,()=>{const r=m.querySelector('rect');r.setAttribute('stroke','#2dd4bf');r.setAttribute('fill','rgba(45,212,191,.12)');R.after(1400,()=>{r.setAttribute('stroke','rgba(45,212,191,.3)');r.setAttribute('fill','rgba(12,27,31,.62)');});}));}
+    sweep();R.every(2900,sweep);},
+  s10(R,el){const dot=$('#atkPulse',el);const v=['#v0','#v1','#v2','#v3'].map(s=>$(s,el));let vi=0;
+    function run(){dot.setAttribute('opacity',1);R.add(moveDot(dot,120,180,640,180,1800));
+      R.after(1900,()=>{v.forEach(g=>g.querySelector('rect').setAttribute('stroke','var(--line-s)'));const g=v[vi%4].querySelector('rect');g.setAttribute('stroke','#34d399');vi++;});}
+    run();R.every(2400,run);},
+  s12(R,el){const cA=$('#crossA',el),cB=$('#crossB',el),x1=$('#xMark1',el),mac=$('#macBox',el).querySelector('rect');
+    function seq(){cA.setAttribute('opacity',1);cB.setAttribute('opacity',1);R.after(600,()=>x1.setAttribute('opacity',1));
+      R.after(1500,()=>{const t0=performance.now();R.add(now=>{const p=Math.min(1,(now-t0)/700);mac.setAttribute('stroke-width',1.5+Math.sin(p*Math.PI)*2);return p>=1;});});
+      R.after(3200,()=>{cA.setAttribute('opacity',.5);cB.setAttribute('opacity',.5);x1.setAttribute('opacity',0);mac.setAttribute('stroke-width',1.5);});}
+    seq();R.every(4400,seq);},
+  s14(R,el){const grid=$('#asrGrid',el),out=$('#asrReadout',el);grid.innerHTML='';const cells=[];
+    for(let k=0;k<50;k++){const c=document.createElement('div');c.style.cssText='aspect-ratio:1;border-radius:5px;background:rgba(45,212,191,.1);border:1px solid var(--line);transition:all .3s';grid.appendChild(c);cells.push(c);}
+    const idx=[...Array(50).keys()].sort(()=>Math.random()-.5).slice(0,18);let n=0;out.textContent='ASR = 0 / 50 = 0.00';
+    R.every(70,()=>{if(n>=idx.length)return;const c=cells[idx[n]];c.style.background='rgba(255,111,111,.35)';c.style.borderColor='var(--red)';n++;out.textContent='ASR = '+n+' / 50 = '+(n/50).toFixed(2);});},
+  s17(R,el){const set=(id,w,lbl,txt)=>{$('#'+id,el).style.width=w;if(lbl)$('#'+lbl,el).textContent=txt;};
+    R.after(150,()=>{set('aoer','100%','aoerL','1.00');set('boer','100%','boerL','1.00');});
+    R.after(900,()=>{set('awoer','36%','awoerL','0.36');});
+    R.after(1300,()=>{set('bwoer','57%','bwoerL','0.57');});},
+  s19(R,el){const fill=$('#wsFill',el);const nodes=[['#ws0',90],['#ws1',260],['#ws2',430],['#ws3',600],['#ws4',770],['#ws5',940]].map(([s,x])=>[$(s,el),x]);
+    const t0=performance.now();R.add(now=>{const p=Math.min(1,(now-t0)/3000);const x=90+(940-90)*p;fill.setAttribute('x2',x);
+      nodes.forEach(([c,nx])=>{if(x>=nx-2){c.setAttribute('fill','#34d399');c.setAttribute('stroke','#34d399');}});return p>=1;});}
+};
+const resetters={
+  s6(el){$('#gaugeRing',el).setAttribute('stroke-dashoffset',502.6);$('#g30',el).textContent='0%';},
+  s8(el){$('#atkPath',el).style.opacity=0;$('#breach',el).setAttribute('opacity',0);},
+  s9(el){$('#flowPulse',el).setAttribute('opacity',0);},
+  s10(el){$('#atkPulse',el).setAttribute('opacity',0);},
+  s14(el){$('#asrReadout',el).textContent='ASR = 0 / 50 = 0.00';},
+  s17(el){['aoer','boer','awoer','bwoer'].forEach(id=>$('#'+id,el).style.width='0');['aoerL','boerL','awoerL','bwoerL'].forEach(id=>$('#'+id,el).textContent='0.00');},
+  s19(el){$('#wsFill',el).setAttribute('x2',90);['#ws0','#ws1','#ws2','#ws3','#ws4','#ws5'].forEach(s=>{const c=$(s,el);c.setAttribute('fill','var(--ink2)');c.setAttribute('stroke','var(--line-s)');});}
+};
+startAnim(0);
+
+/* ---------- Three.js hero ---------- */
+function hero(mountId,opts){const mount=$('#'+mountId);if(!mount||!window.THREE)return;
+  const W=()=>mount.clientWidth,H=()=>mount.clientHeight;
+  const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(48,W()/H(),.1,100);cam.position.set(0,0,11);
+  const rnd=new THREE.WebGLRenderer({antialias:true,alpha:true});rnd.setSize(W(),H());rnd.setPixelRatio(Math.min(devicePixelRatio,2));mount.appendChild(rnd.domElement);
+  const teal=new THREE.Color(0x2dd4bf),em=new THREE.Color(0x34d399);const grp=new THREE.Group();scene.add(grp);
+  function orb(x,col){const g=new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.9,2),new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:.9,roughness:.3,metalness:.4})));
+    const wire=new THREE.Mesh(new THREE.IcosahedronGeometry(1.35,1),new THREE.MeshBasicMaterial({color:col,wireframe:true,transparent:true,opacity:.35}));
+    g.add(wire);g.add(new THREE.Mesh(new THREE.SphereGeometry(1.9,24,24),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.06,side:THREE.BackSide})));
+    g.position.x=x;g.userData={wire};return g;}
+  const a=orb(-4.2,teal),b=orb(4.2,em);grp.add(a,b);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(1.5,.06,16,80),new THREE.MeshStandardMaterial({color:0xffffff,emissive:teal,emissiveIntensity:.7,metalness:.6,roughness:.2,transparent:true,opacity:.85}));ring.rotation.y=Math.PI/2.4;grp.add(ring);
+  const ring2=new THREE.Mesh(new THREE.TorusGeometry(2.05,.02,16,80),new THREE.MeshBasicMaterial({color:em,transparent:true,opacity:.4}));ring2.rotation.y=Math.PI/2.4;grp.add(ring2);
+  const shield=new THREE.Mesh(new THREE.OctahedronGeometry(.55,0),new THREE.MeshStandardMaterial({color:0x0d9488,emissive:teal,emissiveIntensity:.5,metalness:.7,roughness:.25,transparent:true,opacity:.55}));grp.add(shield);
+  const sw=new THREE.Mesh(new THREE.OctahedronGeometry(.8,0),new THREE.MeshBasicMaterial({color:em,wireframe:true,transparent:true,opacity:.5}));grp.add(sw);
+  const PN=opts.flow||140,fp=new Float32Array(PN*3),fc=new Float32Array(PN*3),meta=[];
+  for(let i=0;i<PN;i++){const t=Math.random(),dir=Math.random()<.5?1:-1;meta.push({t,dir,sp:.0016+Math.random()*.0026,y:(Math.random()-.5)*.5,z:(Math.random()-.5)*.5});const c=dir>0?teal:em;fc[i*3]=c.r;fc[i*3+1]=c.g;fc[i*3+2]=c.b;}
+  const fg=new THREE.BufferGeometry();fg.setAttribute('position',new THREE.BufferAttribute(fp,3));fg.setAttribute('color',new THREE.BufferAttribute(fc,3));
+  const flow=new THREE.Points(fg,new THREE.PointsMaterial({size:.09,vertexColors:true,transparent:true,opacity:.9,blending:THREE.AdditiveBlending,depthWrite:false}));grp.add(flow);
+  const SN=opts.stars||320,sp=new Float32Array(SN*3);for(let i=0;i<SN;i++){sp[i*3]=(Math.random()-.5)*44;sp[i*3+1]=(Math.random()-.5)*26;sp[i*3+2]=(Math.random()-.5)*22-6;}
+  const sg=new THREE.BufferGeometry();sg.setAttribute('position',new THREE.BufferAttribute(sp,3));
+  const stars=new THREE.Points(sg,new THREE.PointsMaterial({color:0x2dd4bf,size:.05,transparent:true,opacity:.4,depthWrite:false}));scene.add(stars);
+  scene.add(new THREE.AmbientLight(0x335555,.7));const p1=new THREE.PointLight(0x2dd4bf,1.4,60);p1.position.set(-6,4,8);scene.add(p1);const p2=new THREE.PointLight(0x34d399,1.2,60);p2.position.set(6,-3,6);scene.add(p2);
+  let mx=0,my=0;mount.parentElement&&mount.parentElement.addEventListener('mousemove',e=>{mx=e.clientX/innerWidth-.5;my=e.clientY/innerHeight-.5;});
+  const t0=performance.now();(function loop(){requestAnimationFrame(loop);const t=(performance.now()-t0)/1000;
+    grp.rotation.y=Math.sin(t*.18)*.32+mx*.5;grp.rotation.x=Math.sin(t*.13)*.12-my*.35;
+    a.userData.wire.rotation.y+=.004;b.userData.wire.rotation.y-=.005;ring.rotation.z=t*.35;ring2.rotation.z=-t*.22;
+    shield.rotation.y=t*.6;shield.rotation.x=t*.3;sw.rotation.y=-t*.4;shield.scale.setScalar(1+Math.sin(t*2.2)*.06);
+    const pos=fg.attributes.position.array;for(let i=0;i<PN;i++){const m=meta[i];m.t+=m.sp*m.dir;if(m.t>1)m.t-=1;if(m.t<0)m.t+=1;const x=-4.2+m.t*8.4,arc=Math.sin(m.t*Math.PI);pos[i*3]=x;pos[i*3+1]=m.y;pos[i*3+2]=m.z+arc;}fg.attributes.position.needsUpdate=true;
+    stars.rotation.y=t*.01;rnd.render(scene,cam);})();
+  addEventListener('resize',()=>{if(W()&&H()){cam.aspect=W()/H();cam.updateProjectionMatrix();rnd.setSize(W(),H());}});
+}
+addEventListener('load',()=>{hero('hero3d',{flow:150,stars:360});hero('hero3d2',{flow:90,stars:200});});
+</script>
